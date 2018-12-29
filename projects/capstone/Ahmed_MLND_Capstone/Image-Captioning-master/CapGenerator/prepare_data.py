@@ -1,5 +1,5 @@
-from os import listdir
-from pickle import dump
+from os import listdir, makedirs, path
+from pickle import dump, load
 from keras.applications.vgg16 import VGG16
 from keras.preprocessing.image import load_img
 from keras.preprocessing.image import img_to_array
@@ -9,140 +9,130 @@ import numpy as np
 import string
 from progressbar import progressbar
 from keras.models import Model
+from pycocotools.coco import COCO
+
+dataDir = 'F:/COCO/datasets'
+annotationsDir = 'annotations'
+ml_type = 'train'
+valDataDir = 'val'
+year = '2014'
+coco_train_full_path = dataDir + '/' + ml_type + year + '/'
 
 # load an image from filepath
 def load_image(path):
-    img = load_img(path, target_size=(224,224))
+    img = load_img(path, target_size=(224, 224))
     img = img_to_array(img)
     img = np.expand_dims(img, axis=0)
     img = preprocess_input(img)
     return np.asarray(img)
 
-# extract features from each photo in the directory
-def extract_features(directory,is_attention=False):
-  # load the model
-  if is_attention:
+# extract features from each photo in the coco_train_full_path
+def extract_features(directory, is_attention=False, limit=100, load_if_exists=False):
+    if load_if_exists:
+        if path.exists('models/features.pkl'):
+            with open('models/features.pkl', 'rb') as pickle_file:
+                features = load(pickle_file)
+                return features
+
+    # load the model
     model = VGG16()
-    model.layers.pop()
-    # extract final 49x512 conv layer for context vectors
-    final_conv = Reshape([49,512])(model.layers[-4].output)
-    model = Model(inputs=model.inputs, outputs=final_conv)
-    print(model.summary())
     features = dict()
-  else:
-    model = VGG16()
-    # re-structure the model
-    model.layers.pop()
-    model = Model(inputs=model.inputs, outputs=model.layers[-1].output)
-    print(model.summary())
-    # extract features from each photo
-    features = dict()
+    if is_attention:
+        # model = VGG16()
+        model.layers.pop()
+        # extract final 49x512 conv layer for context vectors
+        final_conv = Reshape([49, 512])(model.layers[-4].output)
+        model = Model(inputs=model.inputs, outputs=final_conv)
+        print(model.summary())
+    else:
+        # model = VGG16()
+        # re-structure the model
+        model.layers.pop()
+        model = Model(inputs=model.inputs, outputs=model.layers[-1].output)
+        print(model.summary())
+        # extract features from each photo
 
-  for name in progressbar(listdir(directory)):
-    # ignore README
-    if name == 'README.md':
-      continue
-    filename = directory + '/' + name
-    image = load_image(filename)
-    # extract features
-    feature = model.predict(image, verbose=0)
-    # get image id
-    image_id = name.split('.')[0]
-    # store feature
-    features[image_id] = feature
-    print('>%s' % name)
-  return features
+    #add a counter to limit size of data
+    counter = 1
+    for name in progressbar(listdir(directory)[0:limit if limit != -1 else len(listdir(directory))]):
+        # ignore README
+        if not name.endswith('.jpg'):
+            continue
+        counter += 1
+        filename = directory + name
+        image = load_image(filename)
+        # extract features
+        feature = model.predict(image, verbose=0)
+        # get image id
+        #image_id = name.split('.')[0]
+        image_id = name[name.rindex('_')+1:name.rindex('.jpg')].lstrip("0")
+        # store feature
+        features[int(image_id)] = feature
+        # print('>%s' % name)
+        if limit != -1 and counter == limit:
+            break;
+    return features
 
-# load doc into memory
-def load_doc(filename):
-  # open the file as read only
-  file = open(filename, 'r')
-  # read all text
-  text = file.read()
-  # close the file
-  file.close()
-  return text
+def get_coco(ml_type='train', dataset_type='captions', year='2014'):
+    if ml_type != 'train' and ml_type != 'val':
+        raise ValueError('get_coco ml_type accepts only "train" or "val" values only.')
+    if dataset_type != 'instances' and dataset_type != 'captions':
+        raise ValueError('get_coco dataset_type accepts only "instances" or "captions" values only.')
 
-# extract descriptions for images
-def load_descriptions(doc):
-  mapping = dict()
-  # process lines
-  for line in doc.split('\n'):
-    # split line by white space
-    tokens = line.split()
-    if len(line) < 2:
-      continue
-    # take the first token as the image id, the rest as the description
-    image_id, image_desc = tokens[0], tokens[1:]
-    # remove filename from image id
-    image_id = image_id.split('.')[0]
-    # convert description tokens back to string
-    image_desc = ' '.join(image_desc)
-    # create the list if needed
-    if image_id not in mapping:
-      mapping[image_id] = list()
-    # store description
-    mapping[image_id].append(image_desc)
-  return mapping
+    annFile = path.join(dataDir, path.join(annotationsDir, dataset_type + '_{}.json'.format(ml_type + year)))
+    print("Annotations of {0} {1} Dataset: {2}".format(ml_type, dataset_type, annFile))
+    return COCO(annFile)
 
-def clean_descriptions(descriptions):
-  # prepare translation table for removing punctuation
-  table = str.maketrans('', '', string.punctuation)
-  for key, desc_list in descriptions.items():
-    for i in range(len(desc_list)):
-      desc = desc_list[i]
-      # tokenize
-      desc = desc.split()
-      # convert to lower case
-      desc = [word.lower() for word in desc]
-      # remove punctuation from each token
-      desc = [w.translate(table) for w in desc]
-      # remove hanging 's' and 'a'
-      desc = [word for word in desc if len(word)>1]
-      # remove tokens with numbers in them
-      desc = [word for word in desc if word.isalpha()]
-      # store as string
-      desc_list[i] =  ' '.join(desc)
+def preprocess_caption(caption_as_list):
+    caption_as_list = [word for word in caption_as_list if len(word) > 1]
+    caption_as_list = [word for word in caption_as_list if word.isalpha()]
+    return ' '.join(caption_as_list)
+
+def clean_captions(features):
+    captions = dict()
+    coco = get_coco(ml_type=ml_type, year=year)
+    translator = str.maketrans('', '', string.punctuation)
+    for img_id in features:
+        caps = coco.imgToAnns[img_id]
+        caps = [cap.pop('caption').strip().lower().translate(translator).split()
+                for cap in caps]
+        caps = [preprocess_caption(cap) for cap in caps]
+        captions[img_id] = caps
+    return captions
 
 # convert the loaded descriptions into a vocabulary of words
 def to_vocabulary(descriptions):
-  # build a list of all description strings
-  all_desc = set()
-  for key in descriptions.keys():
-    [all_desc.update(d.split()) for d in descriptions[key]]
-  return all_desc
+    # build a list of all description strings
+    all_desc = set()
+    for key in descriptions.keys():
+        [all_desc.update(d.split()) for d in descriptions[key]]
+    return all_desc
 
 # save descriptions to file, one per line
 def save_descriptions(descriptions, filename):
-  lines = list()
-  for key, desc_list in descriptions.items():
-    for desc in desc_list:
-      lines.append(key + ' ' + desc)
-  data = '\n'.join(lines)
-  file = open(filename, 'w')
-  file.write(data)
-  file.close()
+    lines = list()
+    for key, desc_list in descriptions.items():
+        for desc in desc_list:
+            lines.append(str(key) + ' ' + desc)
+    data = '\n'.join(lines)
+    file = open(filename, 'w')
+    file.write(data)
+    file.close()
 
 # extract features from all images
-
-directory = 'Flickr8k_Dataset'
-features = extract_features(directory)
-print('Extracted Features: %d' % len(features))
+features = extract_features(coco_train_full_path,
+                            is_attention=False,
+                            limit=100,
+                            load_if_exists=True)
+print('\nExtracted Features:{}'.format(len(features)))
 # save to file
+if not path.exists('models/'):
+    makedirs('models/')
 dump(features, open('models/features.pkl', 'wb'))
-
-# prepare descriptions
-
-filename = 'Flickr8k_text/Flickr8k.token.txt'
-# load descriptions
-doc = load_doc(filename)
-# parse descriptions
-descriptions = load_descriptions(doc)
-print('Loaded: %d ' % len(descriptions))
-# clean descriptions
-clean_descriptions(descriptions)
+# load & clean descriptions
+captions = clean_captions(features)
 # summarize vocabulary
-vocabulary = to_vocabulary(descriptions)
+vocabulary = to_vocabulary(captions)
 print('Vocabulary Size: %d' % len(vocabulary))
 # save to file
-save_descriptions(descriptions, 'models/descriptions.txt')
+save_descriptions(captions, 'models/captions.txt')
