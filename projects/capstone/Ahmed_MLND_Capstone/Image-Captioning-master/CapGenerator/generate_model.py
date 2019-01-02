@@ -23,35 +23,35 @@ lstm_layers = 2
 dropout_rate = 0.2
 learning_rate = 0.001
 
-# convert a dictionary of clean descriptions to a list of descriptions
-def to_lines(descriptions):
-  all_desc = list()
-  for key in descriptions.keys():
-    [all_desc.append(d) for d in descriptions[key]]
-  return all_desc
+# convert a dictionary{captions} to a list[captions]
+def to_lines(captions):
+  all_caps = list()
+  for key in captions.keys():
+    all_caps.extend(captions[key])
+  return all_caps
 
-# fit a tokenizer given caption descriptions
-def create_tokenizer(descriptions):
-  lines = to_lines(descriptions)
+# fit a tokenizer given captions
+def create_tokenizer(captions):
+  lines = to_lines(captions)
   tokenizer = Tokenizer()
   tokenizer.fit_on_texts(lines)
   return tokenizer
 
 
-# calculate the length of the description with the most words
-def max_length(descriptions):
-  lines = to_lines(descriptions)
+# calculate the length of the caption with the most words
+def max_length(captions):
+  lines = to_lines(captions)
   return max(len(d.split()) for d in lines)
 
 # create sequences of images, input sequences and output words for an image
-def create_sequences(tokenizer, max_length, desc_list, photo):
+def create_sequences(tokenizer, max_length, captions_list, photo):
   vocab_size = len(tokenizer.word_index) + 1
 
   X1, X2, y = [], [], []
-  # walk through each description for the image
-  for desc in desc_list:
+  # walk through each caption for the image
+  for caption in captions_list:
     # encode the sequence
-    seq = tokenizer.texts_to_sequences([desc])[0]
+    seq = tokenizer.texts_to_sequences([caption])[0]
     # split one sequence into multiple X,y pairs
     for i in range(1, len(seq)):
       # split into input and output pair
@@ -67,19 +67,19 @@ def create_sequences(tokenizer, max_length, desc_list, photo):
   return np.array(X1), np.array(X2), np.array(y)
 
 # data generator, intended to be used in a call to model.fit_generator()
-def data_generator(descriptions, photos, tokenizer, max_length, n_step = 1):
+def data_generator(captions, photos, tokenizer, max_length, n_step = 1):
   # loop for ever over images
   while 1:
     # loop over photo identifiers in the dataset
-    keys = list(descriptions.keys())
+    keys = list(captions.keys())
     for i in range(0, len(keys), n_step):
       Ximages, XSeq, y = list(), list(),list()
       for j in range(i, min(len(keys), i+n_step)):
         image_id = keys[j]
         # retrieve the photo feature
         photo = photos[image_id][0]
-        desc_list = descriptions[image_id]
-        in_img, in_seq, out_word = create_sequences(tokenizer, max_length, desc_list, photo)
+        captions_list = captions[image_id]
+        in_img, in_seq, out_word = create_sequences(tokenizer, max_length, captions_list, photo)
         for k in range(len(in_img)):
           Ximages.append(in_img[k])
           XSeq.append(in_seq[k])
@@ -136,5 +136,5 @@ def define_model(vocab_size, max_length):
   model = Model(inputs=[inputs1, inputs2], outputs=outputs)
   model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
   print(model.summary())
-  plot_model(model, show_shapes=True, to_file='model.png')
+  # plot_model(model, show_shapes=True, to_file='newmodel.png')
   return model
