@@ -121,7 +121,7 @@ if __name__ == '__main__':
     tokenizer = load(open('models/tokenizer.pkl', 'rb'))
     index_word = load(open('models/index_word.pkl', 'rb'))
     # pre-define the max sequence length (from training)
-    max_length = 34
+    max_length = 39
 
     # load the model
     # if args.model:
