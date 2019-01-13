@@ -2,8 +2,13 @@ from pycocotools.coco import COCO
 import numpy as np
 
 class CocoDataGenerator:
-    def __init__(self, categoryies, annotation_file,coco_data_dir):
-        self.categories = categoryies
+    def __init__(self,
+                 categories,
+                 annotation_file="/media/ahmedmos/Samsung_T5/COCO/datasets/annotations/instances_train2014.json",
+                 coco_data_dir="media/ahmedmos/Samsung_T5/COCO/datasets/",
+                 num_imgs=2000):
+        self.num_imgs = num_imgs
+        self.categories = categories
         self.annotation_file = annotation_file
         self.coco_data_dir = coco_data_dir
 
@@ -22,7 +27,7 @@ class CocoDataGenerator:
 
         num_classes = len(cocoCategorys_ids)
         data = dict()
-        imgIds = list(imgIds)[0:2000]
+        imgIds = list(imgIds)[0:self.num_imgs]
         imgs = coco.loadImgs(imgIds)
 
         coco.download(self.coco_image_dir,imgIds)
