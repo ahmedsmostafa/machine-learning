@@ -3,6 +3,8 @@ import generate_model as gen
 from keras.callbacks import ModelCheckpoint
 from pickle import dump, load
 
+modelDir = 'F:/COCO/models/'
+
 def train_model(weight = None, epochs = 10):
   # load dataset
   # data = ld.prepare_dataset('train')
@@ -13,11 +15,11 @@ def train_model(weight = None, epochs = 10):
   # prepare tokenizer
   tokenizer = gen.create_tokenizer(train_captions)
   # save the tokenizer
-  dump(tokenizer, open('models/tokenizer.pkl', 'wb'))
+  dump(tokenizer, open(modelDir+'tokenizer.pkl', 'wb'))
   # index_word dict
   index_word = {v: k for k, v in tokenizer.word_index.items()}
   # save dict
-  dump(index_word, open('models/index_word.pkl', 'wb'))
+  dump(index_word, open(modelDir+'index_word.pkl', 'wb'))
 
   vocab_size = len(tokenizer.word_index) + 1
   print('Vocabulary Size: %d' % vocab_size)
@@ -34,7 +36,7 @@ def train_model(weight = None, epochs = 10):
     model.load_weights(weight)
 
   # define checkpoint callback
-  filepath = 'models/model-ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5'
+  filepath = modelDir+'model-ep{epoch:03d}-loss{loss:.3f}-val_loss{val_loss:.3f}.h5'
   checkpoint = ModelCheckpoint(filepath, monitor='val_loss', verbose=1,
                 save_best_only=True, mode='min')
 
@@ -49,8 +51,8 @@ def train_model(weight = None, epochs = 10):
         callbacks=[checkpoint], validation_data=val_generator, validation_steps=val_steps)
 
   try:
-      model.save('models/wholeModel.h5', overwrite=True)
-      model.save_weights('models/weights.h5',overwrite=True)
+      model.save(modelDir + 'wholeModel.h5', overwrite=True)
+      model.save_weights(modelDir + 'weights.h5',overwrite=True)
   except:
       print("Error in saving model.")
   print("Training complete...\n")

@@ -1,7 +1,6 @@
 import numpy as np
 import tensorflow as tf
 from pickle import load
-from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 from keras.utils import to_categorical
 from keras.utils import plot_model
